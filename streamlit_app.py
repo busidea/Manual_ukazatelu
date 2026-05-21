@@ -33,75 +33,65 @@ def load_all_data(url_d, url_k):
 
 df_data, df_kat = load_all_data(url_data, url_kategorie)
 
-# Inicializace klíčových stavů aplikace
+# Inicializace stavu aplikace (Session State) pro navigaci a historii
 if "zvolena_zkratka" not in st.session_state:
     st.session_state.zvolena_zkratka = None
 if "historie_navigace" not in st.session_state:
     st.session_state.historie_navigace = []
-if "predchozi_vyber" not in st.session_state:
-    st.session_state.predchozi_vyber = "-- Vyberte --"
 
-# Pomocná funkce pro spolehlivou změnu ukazatele
-def preklik_na_ukazatel(nova_zkratka):
+# Pomocná funkce pro spolehlivou změnu ukazatele kamkoliv v aplikaci
+def zmenit_ukazatel(nova_zkratka):
     if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
         if st.session_state.zvolena_zkratka not in st.session_state.historie_navigace:
             st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
     st.session_state.zvolena_zkratka = nova_zkratka
-    st.session_state.predchozi_vyber = nova_zkratka
 
 if df_data is not None and df_kat is not None:
     
-    # --- SIDEBAR: ČISTÝ, NEZKRACOVANÝ SEZNAM ---
-    st.sidebar.markdown("### 🔍 Seznam všech ukazatelů")
+    # --- SIDEBAR: VYHLEDÁVACÍ POLE S NAŠEPTÁVAČEM ---
+    st.sidebar.markdown("### 🔍 Vyhledávání")
     
-    # Řazení ukazatelů abecedně
-    vsechny_zkratky_sidebar = sorted(df_data["Zkratka"].dropna().unique())
+    vsechny_zkratky = sorted(df_data["Zkratka"].dropna().unique())
+    moznosti_selectboxu = ["🏠 Hlavní přehled (Mřížka)"] + vsechny_zkratky
     
-    # Místo rolety použijeme radio button, který se NIKDY nezkracuje a zobrazí tolik položek, kolik se jich na obrazovku vejde
-    # Pro synchronizaci s prokliky musíme vypočítat aktuální index
-    default_idx = 0
-    if st.session_state.zvolena_zkratka in vsechny_zkratky_sidebar:
-        default_idx = vsechny_zkratky_sidebar.index(st.session_state.zvolena_zkratka) + 1
+    # Určení aktuálního indexu pro synchronizaci s prokliky z plochy
+    aktuální_index = 0
+    if st.session_state.zvolena_zkratka in moznosti_selectboxu:
+        aktuální_index = moznosti_selectboxu.index(st.session_state.zvolena_zkratka)
         
-    možnosti_sidebar = ["🏠 Domovská mřížka"] + vsechny_zkratky_sidebar
-    
-    vyber_sidebar = st.sidebar.radio(
-        "Vyberte ukazatel pro přímý detail:",
-        možnosti_sidebar,
-        index=default_idx if st.session_state.zvolena_zkratka else 0,
-        key="nativni_sidebar_radio"
+    vyber_sidebar = st.sidebar.selectbox(
+        "Zadejte název nebo zkratku:",
+        moznosti_selectboxu,
+        index=aktuální_index,
+        key="hlavni_vyhledavac_selectbox"
     )
     
-    # Detekce, zda uživatel kliknul v sidebaru manuálně
-    if vyber_sidebar == "🏠 Domovská mřížka" and st.session_state.zvolena_zkratka is not None and st.session_state.predchozi_vyber != "🏠 Domovská mřížka":
-        st.session_state.zvolena_zkratka = None
-        st.session_state.historie_navigace = []
-        st.session_state.predchozi_vyber = "🏠 Domovská mřížka"
-        st.rerun()
-    elif vyber_sidebar != "🏠 Domovská mřížka" and vyber_sidebar != st.session_state.predchozi_vyber:
-        st.session_state.predchozi_vyber = vyber_sidebar
-        preklik_na_ukazatel(vyber_sidebar)
-        st.rerun()
-
+    # Reakce na změnu v sidebaru (uživatel ručně vybral nebo napsal ukazatel)
+    if vyber_sidebar == "🏠 Hlavní přehled (Mřížka)":
+        if st.session_state.zvolena_zkratka is not None:
+            st.session_state.zvolena_zkratka = None
+            st.session_state.historie_navigace = []
+            st.rerun()
+    else:
+        if vyber_sidebar != st.session_state.zvolena_zkratka:
+            zmenit_ukazatel(vyber_sidebar)
+            st.rerun()
 
     # --- HLAVNÍ PLOCHA APLIKACE ---
     
-    # SCÉNÁŘ 1: DETAIL UKAZATELE (Zobrazí se, pokud je zvolena_zkratka nastavena)
+    # SCÉNÁŘ 1: DETAIL UKAZATELE
     if st.session_state.zvolena_zkratka is not None:
         
-        # Navigační lišta
+        # Navigační tlačítka nahoře
         nav_col1, nav_col2, _ = st.columns([1, 2, 7])
         with nav_col1:
             if st.button("⬅️ Zpět", disabled=len(st.session_state.historie_navigace) == 0):
-                predchozi = st.session_state.historie_navigace.pop()
-                st.session_state.zvolena_zkratka = predchozi
-                st.session_state.predchozi_vyber = predchozi
+                st.session_state.zvolena_zkratka = st.session_state.historie_navigace.pop()
                 st.rerun()
         with nav_col2:
-            if st.button("🏠 Na hlavní přehled", key="btn_home_top"):
+            if st.button("🏠 Na hlavní přehled"):
                 st.session_state.zvolena_zkratka = None
                 st.session_state.historie_navigace = []
-                st.session_state.predchozi_vyber = "🏠 Domovská mřížka"
                 st.rerun()
             
         row = df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka].iloc[0]
@@ -114,7 +104,6 @@ if df_data is not None and df_kat is not None:
         st.markdown("### 🧮 Vzorec / Konstrukce")
         st.info(f"**{row['Vzorec']}**")
 
-        # Výrazné hlavní texty
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("#### 💡 Co představuje?")
@@ -156,21 +145,20 @@ if df_data is not None and df_kat is not None:
 
         st.markdown("---")
 
-        # NEPRŮSTŘELNÉ PROKLIKY VAZEB
+        # OPRAVENÉ VAZBY: Vyhledávají podle ID, ale přepínají aplikaci na textovou Zkratku
         st.markdown("### 🔗 Vazby na jiné ukazatele a kontext")
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
             try:
                 id_list = [int(x.strip()) for x in vazby_raw.split(",") if x.strip().isdigit()]
                 if id_list:
-                    st.write("Tento ukazatel přímo ovlivňuje nebo souvisí s (kliknutím OKAMŽITĚ skočíte do detailu):")
+                    st.write("Tento ukazatel přímo ovlivňuje nebo souvisí s:")
                     for target_id in id_list:
                         target_row = df_data[df_data['ID'] == target_id]
                         if not target_row.empty:
                             target_data = target_row.iloc[0]
-                            # Tlačítko upravené tak, aby okamžitě přepsalo i stav a vynutilo překreslení
                             if st.button(f"➡️ Přejít na: {target_data['Zkratka']} – {target_data['Ukazatel']}", key=f"vazba_id_{target_id}"):
-                                preklik_na_ukazatel(target_data['Zkratka'])
+                                zmenit_ukazatel(target_data['Zkratka'])
                                 st.rerun()
                 else: st.warning(vazby_raw)
             except: st.warning(vazby_raw)
@@ -215,12 +203,12 @@ if df_data is not None and df_kat is not None:
                         for idx, (_, u_row) in enumerate(hlavni_ukazatele.iterrows()):
                             with cols_buttons[idx]:
                                 if st.button(u_row["Zkratka"], key=f"grid_btn_{radek['panel_id']}_{u_row['Zkratka']}", help=u_row["Ukazatel"]):
-                                    preklik_na_ukazatel(u_row["Zkratka"])
+                                    zmenit_ukazatel(u_row["Zkratka"])
                                     st.rerun()
                     else:
                         st.caption("Žádné zkratky nebyly označeny jako hlavní.")
                     
-                    with st.expander("Zobrazit celou kategorii", expanded=False):
+                    with st.expander("Zobrazit celou kategoriory", expanded=False):
                         if not kat_info.empty:
                             st.write(kat_info["Uvodni_Text"].iloc[0])
                             if "Co_Zde_Najdete" in df_kat.columns:
@@ -231,7 +219,7 @@ if df_data is not None and df_kat is not None:
                         
                         for _, p_row in vsechny_kat_polozky.iterrows():
                             if st.button(f"🔍 {p_row['Zkratka']} - {p_row['Ukazatel']}", key=f"exp_list_{radek['panel_id']}_{p_row['Zkratka']}"):
-                                preklik_na_ukazatel(p_row["Zkratka"])
+                                zmenit_ukazatel(p_row["Zkratka"])
                                 st.rerun()
 
 else:
