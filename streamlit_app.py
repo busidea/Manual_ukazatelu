@@ -39,14 +39,14 @@ if "zvolena_zkratka" not in st.session_state:
 if "historie_navigace" not in st.session_state:
     st.session_state.historie_navigace = []
 
-# Pomocná funkce pro bezpečnou změnu ukazatele z plochy (mřížka, vazby, tlačítka)
+# Pomocná funkce pro bezpečnou změnu ukazatele z plochy
 def prejit_na_ukazatel(nova_zkratka):
     if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
         if st.session_state.zvolena_zkratka not in st.session_state.historie_navigace:
             st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
     st.session_state.zvolena_zkratka = nova_zkratka
 
-# Funkce spuštěná při ruční změně v levém rozbalovacím menu
+# Funkce pro změnu v levém rozbalovacím menu
 def callback_sidebar_ukazatel():
     vyber = st.session_state.selectbox_ukazatel_sidebar
     if vyber == "-- Vyberte --":
@@ -73,7 +73,6 @@ if df_data is not None and df_kat is not None:
     filtr_sidebar_df = filtr_sidebar_df.sort_values(by="Zkratka")
     ukazatel_list = ["-- Vyberte --"] + list(filtr_sidebar_df["Zkratka"].dropna().unique())
     
-    # Určení indexu pro lištu tak, aby sledovala dění na hlavní ploše
     index_select = 0
     if st.session_state.zvolena_zkratka in ukazatel_list:
         index_select = ukazatel_list.index(st.session_state.zvolena_zkratka)
@@ -91,14 +90,14 @@ if df_data is not None and df_kat is not None:
     # SCÉNÁŘ 1: DETAIL UKAZATELE
     if st.session_state.zvolena_zkratka is not None:
         
-        # Ovládací tlačítka zpětného chodu nahoře
-        nav_col1, nav_col2, _ = st.columns([1, 2, 7])
+        # KOMPAKTNÍ LIŠTA: Tlačítka těsně vedle sebe pro úsporu místa nahoře
+        nav_col1, nav_col2, _ = st.columns([1.2, 2.2, 8.6])
         with nav_col1:
             if st.button("⬅️ Zpět", disabled=len(st.session_state.historie_navigace) == 0):
                 st.session_state.zvolena_zkratka = st.session_state.historie_navigace.pop()
                 st.rerun()
         with nav_col2:
-            if st.button("🏠 Na hlavní přehled"):
+            if st.button("🏠 Hlavní přehled"):
                 st.session_state.zvolena_zkratka = None
                 st.session_state.historie_navigace = []
                 st.rerun()
@@ -106,34 +105,61 @@ if df_data is not None and df_kat is not None:
         row = df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka].iloc[0]
         current_id = row['ID']
 
-        st.header(f"{row['Ukazatel']} ({row['Zkratka']})")
-        st.caption(f"Kategorie v DB: {row['Kategorie']} | ID: {int(current_id) if pd.notnull(current_id) else 'N/A'}")
-        st.markdown("---")
+        # Hlavní nadpis - o něco menší h2 pro lepší kompaktnost
+        st.subheader(f"📊 {row['Ukazatel']} ({row['Zkratka']})")
+        st.caption(f"Kategorie: {row['Kategorie']} | ID: {int(current_id) if pd.notnull(current_id) else 'N/A'}")
+        
+        # Sekce 1: Vzorec
+        st.info(f"**🧮 Vzorec / Konstrukce:** {row['Vzorec']}")
 
-        st.markdown("### 🧮 Vzorec / Konstrukce")
-        st.info(f"**{row['Vzorec']}**")
-
+        # Sekce 2: Charakteristika a Interpretace vedle sebe
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("#### 💡 Co představuje?")
-            st.markdown(f"**{row['Hlavni_Charakteristika']}**")
+            st.markdown("**💡 Co představuje?**")
+            st.markdown(f"*{row['Hlavni_Charakteristika']}*")
         with col2:
-            st.markdown("#### 🔍 Jak ho číst a interpretovat?")
-            st.markdown(f"**{row['Jak_Interpretovat']}**")
+            st.markdown("**🔍 Jak ho číst a interpretovat?**")
+            st.markdown(f"*{row['Jak_Interpretovat']}*")
 
-        st.markdown("---")
-
-        st.markdown("### 📈 Vodítko k posouzení hodnot")
+        # Sekce 3: Hodnoty vedle sebe
         col3, col4 = st.columns(2)
         with col3:
-            st.success(f"**Optimální / Obvyklé hodnoty:**\n\n{row['Optimalni_Hodnoty']}")
+            st.success(f"**📈 Optimální / Obvyklé hodnoty:**\n\n{row['Optimalni_Hodnoty']}")
         with col4:
-            st.error(f"**Kritické / Rizikové hodnoty:**\n\n{row['Kriticke_Hodnoty']}")
+            st.error(f"**📉 Kritické / Rizikové hodnoty:**\n\n{row['Kriticke_Hodnoty']}")
 
+        # Sekce 4: Vazby na jiné ukazatele (přesunuty výše, hned pod texty)
+        vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
+        if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
+            id_list = []
+            cista_id = [x.strip() for x in vazby_raw.split(",") if x.strip().isdigit()]
+            if cista_id:
+                id_list = [int(x) for x in cista_id]
+            else:
+                for _, db_row in df_data.iterrows():
+                    zkratka_v_db = str(db_row["Zkratka"]).strip()
+                    if zkratka_v_db.lower() in vazby_raw.lower():
+                        if db_row["ID"] not in id_list and db_row["ID"] != current_id:
+                            id_list.append(int(db_row["ID"]))
+            
+            if id_list:
+                st.markdown("**🔗 Související ukazatele:**")
+                cols_vazby = st.columns(len(id_list) if len(id_list) <= 5 else 5)
+                for idx, target_id in enumerate(id_list):
+                    target_row = df_data[df_data['ID'] == target_id]
+                    if not target_row.empty:
+                        target_data = target_row.iloc[0]
+                        col_target = cols_vazby[idx % 5]
+                        with col_target:
+                            if st.button(f"🔗 {target_data['Zkratka']}", key=f"vazba_btn_{st.session_state.zvolena_zkratka}_{target_id}", help=target_data['Ukazatel']):
+                                prejit_na_ukazatel(target_data['Zkratka'])
+                                st.rerun()
+            else:
+                st.text(f"🔗 Kontext: {vazby_raw}")
+
+        # Sekce 5: Interaktivní kalkulačka (odsunuta dolů jako doplněk)
         st.markdown("---")
-
-        st.markdown("### 🧮 Interaktivní kalkulačka")
-        with st.expander(f"Otevřít kalkulačku pro: {row['Zkratka']}", expanded=False):
+        with st.expander(f"🧮 Spustit pomocnou kalkulačku pro {row['Zkratka']}", expanded=False):
             if row['Zkratka'] == 'P/E':
                 calc_price = st.number_input("Aktuální cena akcie:", min_value=0.0, value=150.0, step=1.0)
                 calc_eps = st.number_input("Zisk na akcii (EPS):", min_value=0.01, value=7.5, step=0.1)
@@ -151,47 +177,6 @@ if df_data is not None and df_kat is not None:
                 elif result_margin < 5: st.error("⚠️ Nízká marže. Byznys je zranitelný vůči růstu nákladů.")
             else:
                 st.write(f"Pro ukazatel **{row['Zkratka']}** se kalkulačka připravuje podle vzorce: `{row['Vzorec']}`.")
-
-        st.markdown("---")
-
-        # --- CHYTRÉ A AUTOMATICKÉ VAZBY (ČÍSLA I TEXT) ---
-        st.markdown("### 🔗 Vazby na jiné ukazatele a kontext")
-        vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
-        
-        if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
-            id_list = []
-            
-            # Krok A: Zkusíme, zda v buňce nejsou rovnou čistá ID čísla oddělená čárkou
-            cista_id = [x.strip() for x in vazby_raw.split(",") if x.strip().isdigit()]
-            if cista_id:
-                id_list = [int(x) for x in cista_id]
-            else:
-                # Krok B: Pokud jsou v buňce slova, prohledáme databázi a vytáhneme odpovídající ID podle nalezených zkratek
-                for _, db_row in df_data.iterrows():
-                    zkratka_v_db = str(db_row["Zkratka"]).strip()
-                    # Kontrola, zda text obsahuje danou zkratku (např. zda text obsahuje "PEG" nebo "P/E")
-                    if zkratka_v_db.lower() in vazby_raw.lower():
-                        if db_row["ID"] not in id_list and db_row["ID"] != current_id:
-                            id_list.append(int(db_row["ID"]))
-            
-            # Pokud se podařilo najít jakákoliv ID (přes čísla nebo přes textová slova)
-            if id_list:
-                st.write("Tento ukazatel přímo ovlivňuje nebo souvisí s (kliknutím přejdete na detail):")
-                cols_vazby = st.columns(len(id_list) if len(id_list) <= 4 else 4)
-                for idx, target_id in enumerate(id_list):
-                    target_row = df_data[df_data['ID'] == target_id]
-                    if not target_row.empty:
-                        target_data = target_row.iloc[0]
-                        col_target = cols_vazby[idx % 4]
-                        with col_target:
-                            if st.button(f"🔗 {target_data['Zkratka']}", key=f"vazba_btn_{st.session_state.zvolena_zkratka}_{target_id}", help=target_data['Ukazatel']):
-                                prejit_na_ukazatel(target_data['Zkratka'])
-                                st.rerun()
-            else:
-                # Pokud v textu nebyla nalezena žádná známá zkratka, text pouze bezpečně zobrazíme
-                st.info(vazby_raw)
-        else:
-            st.info("Pro tento ukazatel zatím nebyly definovány specifické vazby.")
 
     # SCÉNÁŘ 2: HLAVNÍ ROZCESTNÍK (MŘÍŽKA 6 PANELŮ)
     else:
