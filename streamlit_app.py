@@ -33,7 +33,7 @@ def load_all_data(url_d, url_k):
 
 df_data, df_kat = load_all_data(url_data, url_kategorie)
 
-# Inicializace historie navigace v Session State
+# Inicializace stavů v Session State
 if "zvolena_zkratka" not in st.session_state:
     st.session_state.zvolena_zkratka = None
 if "historie_navigace" not in st.session_state:
@@ -42,7 +42,8 @@ if "historie_navigace" not in st.session_state:
 # Pomocná funkce pro bezpečnou změnu ukazatele s ukládáním historie
 def prejit_na_ukazatel(nova_zkratka):
     if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
-        st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
+        if st.session_state.zvolena_zkratka not in st.session_state.historie_navigace:
+            st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
     st.session_state.zvolena_zkratka = nova_zkratka
 
 if df_data is not None and df_kat is not None:
@@ -61,18 +62,22 @@ if df_data is not None and df_kat is not None:
     filtr_sidebar_df = filtr_sidebar_df.sort_values(by="Zkratka")
     ukazatel_list = ["-- Vyberte --"] + list(filtr_sidebar_df["Zkratka"].dropna().unique())
     
+    # OPRAVA: Výpočet indexu děláme bezpečně. Pokud otevřeme ukazatel z mřížky, sidebar se na něj přepne.
     index_select = 0
     if st.session_state.zvolena_zkratka in ukazatel_list:
         index_select = ukazatel_list.index(st.session_state.zvolena_zkratka)
         
-    sidebar_ukazatel = st.sidebar.selectbox("Přejít na ukazatel:", ukazatel_list, index=index_select)
+    sidebar_ukazatel = st.sidebar.selectbox("Přejít na ukazatel:", ukazatel_list, index=index_select, key="selectbox_ukazatel_sidebar")
     
+    # OPRAVA PODMÍNEK: Reagujeme POUZE tehdy, pokud uživatel v sidebaru aktivně změnil hodnotu oproti Session State
     if sidebar_ukazatel != "-- Vyberte --" and sidebar_ukazatel != st.session_state.zvolena_zkratka:
         prejit_na_ukazatel(sidebar_ukazatel)
+        st.rerun()
     elif sidebar_ukazatel == "-- Vyberte --" and st.session_state.zvolena_zkratka is not None:
-        if sidebar_kat != "Všechny" and df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka]["Kategorie"].iloc[0] != sidebar_kat:
-            st.session_state.zvolena_zkratka = None
-            st.session_state.historie_navigace = []
+        # Pokud uživatel ručně vrátil na "-- Vyberte --", vymažeme stav a jdeme na domovskou mřížku
+        st.session_state.zvolena_zkratka = None
+        st.session_state.historie_navigace = []
+        st.rerun()
 
     # --- HLAVNÍ PLOCHA APLIKACE ---
     
@@ -101,7 +106,6 @@ if df_data is not None and df_kat is not None:
         st.markdown("### 🧮 Vzorec / Konstrukce")
         st.info(f"**{row['Vzorec']}**")
 
-        # Zvětšení důležitého textu pomocí standardního Markdown tučného písma a formátu
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("#### 💡 Co představuje?")
@@ -143,7 +147,7 @@ if df_data is not None and df_kat is not None:
 
         st.markdown("---")
 
-        # Čisté prokliky u vazeb pomocí tlačítek, dokud nebudou povoleny HTML linky
+        # FUNKČNÍ PROKLIKY VE VAZBÁCH
         st.markdown("### 🔗 Vazby na jiné ukazatele a kontext")
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
