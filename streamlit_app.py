@@ -105,7 +105,7 @@ if df_data is not None and df_kat is not None:
         row = df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka].iloc[0]
         current_id = row['ID']
 
-        # Hlavní nadpis - o něco menší h2 pro lepší kompaktnost
+        # Hlavní nadpis
         st.subheader(f"📊 {row['Ukazatel']} ({row['Zkratka']})")
         st.caption(f"Kategorie: {row['Kategorie']} | ID: {int(current_id) if pd.notnull(current_id) else 'N/A'}")
         
@@ -128,7 +128,7 @@ if df_data is not None and df_kat is not None:
         with col4:
             st.error(f"**📉 Kritické / Rizikové hodnoty:**\n\n{row['Kriticke_Hodnoty']}")
 
-        # Sekce 4: Vazby na jiné ukazatele (přesunuty výše, hned pod texty)
+        # Sekce 4: VYPRÁSKANÁ TLAČÍTKA BLÍZKO SEBE (Změna zde)
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
             id_list = []
@@ -144,20 +144,38 @@ if df_data is not None and df_kat is not None:
             
             if id_list:
                 st.markdown("**🔗 Související ukazatele:**")
-                cols_vazby = st.columns(len(id_list) if len(id_list) <= 5 else 5)
+                
+                # Tento HTML kód donutí Streamlit elementy uvnitř kontejneru držet se těsně vedle sebe
+                st.html(
+                    """
+                    <style>
+                        div[data-testid="stHorizontalBlock"] {
+                            gap: 10px !important;
+                        }
+                        div[data-testid="element-container"]:has(div.stButton) {
+                            display: inline-block !important;
+                            width: auto !important;
+                            flex: none !important;
+                        }
+                    </style>
+                    """
+                )
+                
+                # Vytvoříme dynamické sloupce, ale s fixní malou šířkou pro každý prvek
+                cols_vazby = st.columns([1] * len(id_list) + [12 - len(id_list) if len(id_list) < 12 else 1])
+                
                 for idx, target_id in enumerate(id_list):
                     target_row = df_data[df_data['ID'] == target_id]
                     if not target_row.empty:
                         target_data = target_row.iloc[0]
-                        col_target = cols_vazby[idx % 5]
-                        with col_target:
+                        with cols_vazby[idx]:
                             if st.button(f"🔗 {target_data['Zkratka']}", key=f"vazba_btn_{st.session_state.zvolena_zkratka}_{target_id}", help=target_data['Ukazatel']):
                                 prejit_na_ukazatel(target_data['Zkratka'])
                                 st.rerun()
             else:
                 st.text(f"🔗 Kontext: {vazby_raw}")
 
-        # Sekce 5: Interaktivní kalkulačka (odsunuta dolů jako doplněk)
+        # Sekce 5: Interaktivní kalkulačka (dole)
         st.markdown("---")
         with st.expander(f"🧮 Spustit pomocnou kalkulačku pro {row['Zkratka']}", expanded=False):
             if row['Zkratka'] == 'P/E':
