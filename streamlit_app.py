@@ -85,7 +85,7 @@ if df_data is not None and df_kat is not None:
         current_id = row['ID']
 
         st.header(f"{row['Ukazatel']} ({row['Zkratka']})")
-        st.caption(f"Kategorie: {row['Kategorie']} | ID kód v databázi: {int(current_id) if pd.notnull(current_id) else 'N/A'}")
+        st.caption(f"Kategorie v DB: {row['Kategorie']} | ID kód v databázi: {int(current_id) if pd.notnull(current_id) else 'N/A'}")
         st.markdown("---")
 
         st.subheader("🧮 Vzorec / Konstrukce")
@@ -153,52 +153,43 @@ if df_data is not None and df_kat is not None:
     else:
         st.title("🗂️ Rozcestník investičních ukazatelů")
         st.write("Klikněte na jakoukoli kategorii pro zobrazení podrobností, nebo rovnou klikněte na nejdůležitější zkratky.")
-        
-        # Čisté, bezpečné odsazení bez HTML tagů
         st.write("")
 
         # Definice mřížky 3 sloupce × 2 řádky
         row1_col1, row1_col2, row1_col3 = st.columns(3)
         row2_col1, row2_col2, row2_col3 = st.columns(3)
 
-        mrizka = [
-            {"panel": row1_col1, "kat_nazev": "Výsledovka"},
-            {"panel": row1_col2, "kat_nazev": "Rozvaha"},
-            {"panel": row1_col3, "kat_nazev": "Finanční zdraví"},
-            {"panel": row2_col1, "kat_nazev": "Valuace"},
-            {"panel": row2_col2, "kat_nazev": "Makroekonomie"},
-            {"block": row2_col3, "kat_nazev": "Makro / Sentiment"}
-        ]
-        
-        # Sjednocení klíčů v mřížce pro jednodušší iteraci
+        # CHYTRÉ MAPOVÁNÍ: Které kategorie z tabulky (list Data) patří pod jaký panel rozcestníku
         mrizka_sjednocena = [
-            {"panel": row1_col1, "kat_nazev": "Výsledovka"},
-            {"panel": row1_col2, "kat_nazev": "Rozvaha"},
-            {"panel": row1_col3, "kat_nazev": "Finanční zdraví"},
-            {"panel": row2_col1, "kat_nazev": "Valuace"},
-            {"panel": row2_col2, "kat_nazev": "Makroekonomie"},
-            {"panel": row2_col3, "kat_nazev": "Makro / Sentiment"}
+            {"panel": row1_col1, "panel_id": "Výsledovka", "db_kategorie": ["Výsledovka"]},
+            {"panel": row1_col2, "panel_id": "Rozvaha", "db_kategorie": ["Rozvaha"]},
+            {"panel": row1_col3, "panel_id": "Finanční zdraví", "db_kategorie": ["Finanční zdraví", "Rentabilita", "Likvidita", "Zadluženost"]},
+            {"panel": row2_col1, "panel_id": "Valuace", "db_kategorie": ["Valuace", "Kombinované", "Tržní ocenění"]},
+            {"panel": row2_col2, "panel_id": "Makroekonomie", "db_kategorie": ["Makroekonomie", "Makro"]},
+            {"panel": row2_col3, "panel_id": "Makro / Sentiment", "db_kategorie": ["Makro / Sentiment", "Sentiment"]}
         ]
 
         for radek in mrizka_sjednocena:
             with radek["panel"]:
                 with st.container(border=True):
-                    st.markdown(f"### 📂 {radek['kat_nazev']}")
+                    st.markdown(f"### 📂 {radek['panel_id']}")
                     
-                    kat_info = df_kat[df_kat["Nazev_Kategorie"] == radek["kat_nazev"]]
+                    # Načtení textu popisu podle panel_id z listu 'Kategorie'
+                    kat_info = df_kat[df_kat["Nazev_Kategorie"] == radek["panel_id"]]
                     if not kat_info.empty:
                         st.write(kat_info["Uvodni_Text"].iloc[0][:130] + "...")
                     
                     st.markdown("**Hlavní ukazatele:**")
                     
-                    # Pokročilé a vůči chybám imunní vyhledávání sloupce Hlavni_Ukazatel
-                    hlavni_ukazatele = pd.DataFrame()
+                    # Detekce sloupce Hlavni_Ukazatel
                     sloupec_hlavni = [c for c in df_data.columns if c.lower().replace(" ", "") == "hlavni_ukazatel"]
                     
+                    hlavni_ukazatele = pd.DataFrame()
                     if sloupec_hlavni:
                         real_col = sloupec_hlavni[0]
+                        # NOVINKA: Filtrujeme podle seznamu povolených db_kategorií pro daný panel
                         hlavni_ukazatele = df_data[
-                            (df_data["Kategorie"] == radek["kat_nazev"]) & 
+                            (df_data["Kategorie"].isin(radek["db_kategorie"])) & 
                             (df_data[real_col].astype(str).str.strip().str.upper() == "ANO")
                         ]
                     
@@ -207,13 +198,13 @@ if df_data is not None and df_kat is not None:
                         cols_buttons = st.columns(len(hlavni_ukazatele))
                         for idx, (_, u_row) in enumerate(hlavni_ukazatele.iterrows()):
                             with cols_buttons[idx]:
-                                if st.button(u_row["Zkratka"], key=f"grid_btn_{radek['kat_nazev']}_{u_row['Zkratka']}", help=u_row["Ukazatel"]):
+                                if st.button(u_row["Zkratka"], key=f"grid_btn_{radek['panel_id']}_{u_row['Zkratka']}", help=u_row["Ukazatel"]):
                                     st.session_state.zvolena_zkratka = u_row["Zkratka"]
                                     st.rerun()
                     else:
                         st.caption("Žádné zkratky nebyly označeny jako hlavní.")
                     
-                    # Expander pro celou kategorii
+                    # Expander pro celou kategorii (sloučenou)
                     with st.expander("Zobrazit celou kategorii", expanded=False):
                         if not kat_info.empty:
                             st.write(kat_info["Uvodni_Text"].iloc[0])
@@ -221,9 +212,11 @@ if df_data is not None and df_kat is not None:
                                 st.markdown(f"**Co zde najdete:** {kat_info['Co_Zde_Najdete'].iloc[0]}")
                         
                         st.markdown("**Všechny položky této kategorie:**")
-                        vsechny_kat_polozky = df_data[df_data["Kategorie"] == radek["kat_nazev"]].sort_values(by="Zkratka")
+                        # NOVINKA: Načteme všechny položky ze všech provázaných db_kategorií
+                        vsechny_kat_polozky = df_data[df_data["Kategorie"].isin(radek["db_kategorie"])].sort_values(by="Zkratka")
+                        
                         for _, p_row in vsechny_kat_polozky.iterrows():
-                            if st.button(f"🔍 {p_row['Zkratka']} - {p_row['Ukazatel']}", key=f"exp_list_{radek['kat_nazev']}_{p_row['Zkratka']}"):
+                            if st.button(f"🔍 {p_row['Zkratka']} - {p_row['Ukazatel']}", key=f"exp_list_{radek['panel_id']}_{p_row['Zkratka']}"):
                                 st.session_state.zvolena_zkratka = p_row["Zkratka"]
                                 st.rerun()
 
