@@ -18,9 +18,18 @@ def load_all_data(url_d, url_k):
         df_d = pd.read_csv(url_d)
         df_k = pd.read_csv(url_k)
         
-        # Vyčištění názvů sloupců
+        # 1. Vyčištění názvů sloupců od neviditelných mezer
         df_d.columns = df_d.columns.str.strip()
         df_k.columns = df_k.columns.str.strip()
+        
+        # 2. Vyčištění textových hodnot v klíčových sloupcích (prevence chyb při kopírování)
+        for col in df_d.columns:
+            if df_d[col].dtype == 'object':
+                df_d[col] = df_d[col].astype(str).str.strip()
+                
+        for col in df_k.columns:
+            if df_k[col].dtype == 'object':
+                df_k[col] = df_k[col].astype(str).str.strip()
         
         # Ošetření ID jako čísel
         if 'ID' in df_d.columns:
@@ -189,10 +198,16 @@ if df_data is not None and df_kat is not None:
                     st.markdown("**Hlavní ukazatele (Rychlý odkaz):**")
                     
                     # Vyhledání hlavních ukazatelů z dané kategorie (kde Hlavni_Ukazatel == 'ANO')
-                    hlavni_ukazatele = df_data[(df_data["Kategorie"] == radek["kat_nazev"]) & (df_data["Hlavni_Ukazatel"].str.upper() == "ANO")]
+                    if "Hlavni_Ukazatel" in df_data.columns:
+                        hlavni_ukazatele = df_data[
+                            (df_data["Kategorie"] == radek["kat_nazev"]) & 
+                            (df_data["Hlavni_Ukazatel"].astype(str).str.strip().str.upper() == "ANO")
+                        ]
+                    else:
+                        hlavni_ukazatele = pd.DataFrame()
                     
-                    if not hlavni_ukazatele.empty:
-                        # Vytvoříme řadu tlačítek pro rychlý proklik
+                    # Bezpečnostní kontrola: Sloupce tvoříme jen tehdy, pokud máme aspoň jeden hlavni ukazatel
+                    if not hlavni_ukazatele.empty and len(hlavni_ukazatele) > 0:
                         cols_buttons = st.columns(len(hlavni_ukazatele))
                         for idx, (_, u_row) in enumerate(hlavni_ukazatele.iterrows()):
                             with cols_buttons[idx]:
