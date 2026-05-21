@@ -33,14 +33,14 @@ def load_all_data(url_d, url_k):
 
 df_data, df_kat = load_all_data(url_data, url_kategorie)
 
-# Inicializace historie navigace v Session State
+# Inicializace stavu (Session State) pro navigaci a historii
 if "zvolena_zkratka" not in st.session_state:
     st.session_state.zvolena_zkratka = None
 if "historie_navigace" not in st.session_state:
     st.session_state.historie_navigace = []
 
-# Pomocná funkce pro bezpečnou změnu ukazatele s ukládáním historie
-def prejit_na_ukazatel(nova_zkratka):
+# Pomocná funkce pro bezpečný skok mezi ukazateli
+def skok_na_ukazatel(nova_zkratka):
     if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
         st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
     st.session_state.zvolena_zkratka = nova_zkratka
@@ -50,6 +50,7 @@ if df_data is not None and df_kat is not None:
     # --- SIDEBAR NAVIGACE ---
     st.sidebar.header("🔍 Rychlá navigace")
     
+    # 1. Výběr kategorie
     kategorie_list = ["Všechny"] + list(df_data["Kategorie"].dropna().unique())
     sidebar_kat = st.sidebar.selectbox("Filtrovat podle kategorie:", kategorie_list, key="sidebar_kat_val")
 
@@ -59,17 +60,25 @@ if df_data is not None and df_kat is not None:
         filtr_sidebar_df = df_data
 
     filtr_sidebar_df = filtr_sidebar_df.sort_values(by="Zkratka")
+    
+    # 2. Výběr ukazatele (přidán index a podpora pro našeptávání/vyhledávání)
     ukazatel_list = ["-- Vyberte --"] + list(filtr_sidebar_df["Zkratka"].dropna().unique())
     
     index_select = 0
     if st.session_state.zvolena_zkratka in ukazatel_list:
         index_select = ukazatel_list.index(st.session_state.zvolena_zkratka)
         
-    sidebar_ukazatel = st.sidebar.selectbox("Přejít na ukazatel:", ukazatel_list, index=index_select)
+    sidebar_ukazatel = st.sidebar.selectbox(
+        "Přejít na ukazatel (lze i psát):", 
+        ukazatel_list, 
+        index=index_select
+    )
     
+    # Reakce na změnu v sidebaru
     if sidebar_ukazatel != "-- Vyberte --" and sidebar_ukazatel != st.session_state.zvolena_zkratka:
-        prejit_na_ukazatel(sidebar_ukazatel)
+        skok_na_ukazatel(sidebar_ukazatel)
     elif sidebar_ukazatel == "-- Vyberte --" and st.session_state.zvolena_zkratka is not None:
+        # Reset, pokud uživatel v dané kategorii vybral prázdné políčko
         if sidebar_kat != "Všechny" and df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka]["Kategorie"].iloc[0] != sidebar_kat:
             st.session_state.zvolena_zkratka = None
             st.session_state.historie_navigace = []
@@ -79,7 +88,7 @@ if df_data is not None and df_kat is not None:
     # SCÉNÁŘ 1: DETAIL UKAZATELE
     if st.session_state.zvolena_zkratka is not None:
         
-        # Tlačítka pro navigaci nahoře vedle sebe
+        # Ovládací tlačítka nahoře vedle sebe
         nav_col1, nav_col2, _ = st.columns([1, 2, 7])
         with nav_col1:
             if st.button("⬅️ Zpět", disabled=len(st.session_state.historie_navigace) == 0):
@@ -101,7 +110,7 @@ if df_data is not None and df_kat is not None:
         st.markdown("### 🧮 Vzorec / Konstrukce")
         st.info(f"**{row['Vzorec']}**")
 
-        # Zvětšení důležitého textu pomocí standardního Markdown tučného písma a formátu
+        # Výrazné hlavní texty
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("#### 💡 Co představuje?")
@@ -143,20 +152,21 @@ if df_data is not None and df_kat is not None:
 
         st.markdown("---")
 
-        # Čisté prokliky u vazeb pomocí tlačítek, dokud nebudou povoleny HTML linky
+        # AKTIVNÍ VAZBY: Tlačítka s proklikem upravená jako čisté odkazy
         st.markdown("### 🔗 Vazby na jiné ukazatele a kontext")
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
             try:
                 id_list = [int(x.strip()) for x in vazby_raw.split(",") if x.strip().isdigit()]
                 if id_list:
-                    st.write("Tento ukazatel přímo ovlivňuje nebo souvisí s (kliknutím přejdete na detail):")
+                    st.write("Tento ukazatel přímo ovlivňuje nebo souvisí s (kliknutím skočíte do detailu):")
                     for target_id in id_list:
                         target_row = df_data[df_data['ID'] == target_id]
                         if not target_row.empty:
                             target_data = target_row.iloc[0]
-                            if st.button(f"🔗 {target_data['Zkratka']} – {target_data['Ukazatel']}", key=f"vazba_{target_id}"):
-                                prejit_na_ukazatel(target_data['Zkratka'])
+                            # Použití nativního Streamlit tlačítka s ikonou pro bezpečný proklik
+                            if st.button(f"➡️ Zobrazit detail: {target_data['Zkratka']} – {target_data['Ukazatel']}", key=f"vazba_{target_id}"):
+                                skok_na_ukazatel(target_data['Zkratka'])
                                 st.rerun()
                 else: st.warning(vazby_raw)
             except: st.warning(vazby_raw)
@@ -201,7 +211,7 @@ if df_data is not None and df_kat is not None:
                         for idx, (_, u_row) in enumerate(hlavni_ukazatele.iterrows()):
                             with cols_buttons[idx]:
                                 if st.button(u_row["Zkratka"], key=f"grid_btn_{radek['panel_id']}_{u_row['Zkratka']}", help=u_row["Ukazatel"]):
-                                    prejit_na_ukazatel(u_row["Zkratka"])
+                                    skok_na_ukazatel(u_row["Zkratka"])
                                     st.rerun()
                     else:
                         st.caption("Žádné zkratky nebyly označeny jako hlavní.")
@@ -217,7 +227,7 @@ if df_data is not None and df_kat is not None:
                         
                         for _, p_row in vsechny_kat_polozky.iterrows():
                             if st.button(f"🔍 {p_row['Zkratka']} - {p_row['Ukazatel']}", key=f"exp_list_{radek['panel_id']}_{p_row['Zkratka']}"):
-                                prejit_na_ukazatel(p_row["Zkratka"])
+                                skok_na_ukazatel(p_row["Zkratka"])
                                 st.rerun()
 
 else:
