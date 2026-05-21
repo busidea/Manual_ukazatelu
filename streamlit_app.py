@@ -4,46 +4,73 @@ import pandas as pd
 # Nastavení stránky (široké rozložení)
 st.set_page_config(page_title="Průvodce Akciovými Ukazateli", layout="wide", page_icon="📊")
 
-# Základní URL vaší Google Tabulky (bez parametrů listu)
-base_url = "https://docs.google.com/spreadsheets/d/12KhfbhPQtJnlj_987Lo8CT7dUJ0GYSexu7tOunaGLdw"
+# --- INJEKCE CSS PRO LEPŠÍ DESIGN A PRODLUŽENÍ ROLET ---
+st.markdown("""
+    <style>
+        /* Prodloužení rozbalovacích seznamů v sidebaru na maximum */
+        div[data-baseweb="popover"] {
+            max-height: 80vh !important;
+        }
+        div[data-baseweb="menu"] {
+            max-height: 75vh !important;
+        }
+        /* Styl pro textové odkazy ve vazbách */
+        .vazba-link {
+            color: #1E88E5;
+            text-decoration: underline;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        /* Větší a výraznější písmo pro hlavní texty popisu */
+        .hlavni-popis-text {
+            font-size: 1.15rem !important;
+            line-height: 1.6 !important;
+            font-weight: 500 !important;
+            color: #111111;
+        }
+    </style>
+""", unsafe_allowed_html=True)
 
-# Konstrukce URL pro export konkrétních listů do CSV (pomocí gviz rozhraní)
+# Základní URL vaší Google Tabulky
+base_url = "https://docs.google.com/spreadsheets/d/12KhfbhPQtJnlj_987Lo8CT7dUJ0GYSexu7tOunaGLdw"
 url_data = f"{base_url}/gviz/tq?tqx=out:csv&sheet=Data"
 url_kategorie = f"{base_url}/gviz/tq?tqx=out:csv&sheet=Kategorie"
 
-# Načtení dat s kešováním
 @st.cache_data
 def load_all_data(url_d, url_k):
     try:
         df_d = pd.read_csv(url_d)
         df_k = pd.read_csv(url_k)
-        
-        # Srovnání a vyčištění názvů sloupců
         df_d.columns = df_d.columns.str.strip()
         df_k.columns = df_k.columns.str.strip()
         
-        # Vyčištění textových hodnot v buňkách
         for col in df_d.columns:
             if df_d[col].dtype == 'object':
                 df_d[col] = df_d[col].astype(str).str.strip()
-                
         for col in df_k.columns:
             if df_k[col].dtype == 'object':
                 df_k[col] = df_k[col].astype(str).str.strip()
         
         if 'ID' in df_d.columns:
             df_d['ID'] = pd.to_numeric(df_d['ID'], errors='coerce')
-            
         return df_d, df_k
     except Exception as e:
-        st.error(f"Nepodařilo se načíst data z Google Tabulky. Chyba: {e}")
+        st.error(f"Nepodařilo se načíst data. Chyba: {e}")
         return None, None
 
 df_data, df_kat = load_all_data(url_data, url_kategorie)
 
-# Inicializace stavu aplikace (Session State) pro navigaci
+# Inicializace historie navigace v Session State
 if "zvolena_zkratka" not in st.session_state:
     st.session_state.zvolena_zkratka = None
+if "historie_navigace" not in st.session_state:
+    st.session_state.historie_navigace = []
+
+# Pomocná funkce pro bezpečnou změnu ukazatele s ukládáním historie
+def prejit_na_ukazatel(nova_zkratka):
+    if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
+        st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
+    st.session_state.zvolena_zkratka = nova_zkratka
 
 if df_data is not None and df_kat is not None:
     
@@ -67,37 +94,49 @@ if df_data is not None and df_kat is not None:
         
     sidebar_ukazatel = st.sidebar.selectbox("Přejít na ukazatel:", ukazatel_list, index=index_select)
     
-    if sidebar_ukazatel != "-- Vyberte --":
-        st.session_state.zvolena_zkratka = sidebar_ukazatel
+    if sidebar_ukazatel != "-- Vyberte --" and sidebar_ukazatel != st.session_state.zvolena_zkratka:
+        prejit_na_ukazatel(sidebar_ukazatel)
     elif sidebar_ukazatel == "-- Vyberte --" and st.session_state.zvolena_zkratka is not None:
         if sidebar_kat != "Všechny" and df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka]["Kategorie"].iloc[0] != sidebar_kat:
             st.session_state.zvolena_zkratka = None
+            st.session_state.historie_navigace = []
 
     # --- HLAVNÍ PLOCHA APLIKACE ---
     
     # SCÉNÁŘ 1: DETAIL UKAZATELE
     if st.session_state.zvolena_zkratka is not None:
-        if st.button("⬅️ Zpět na hlavní přehled"):
-            st.session_state.zvolena_zkratka = None
-            st.rerun()
+        
+        # Tlačítka pro chytrou navigaci nahoře vedle sebe
+        nav_col1, nav_col2, _ = st.columns([1, 2, 7])
+        with nav_col1:
+            # Aktivní jen pokud v historii něco je
+            if st.button("⬅️ Zpět", disabled=len(st.session_state.historie_navigace) == 0):
+                st.session_state.zvolena_zkratka = st.session_state.historie_navigace.pop()
+                st.rerun()
+        with nav_col2:
+            if st.button("🏠 Na hlavní přehled"):
+                st.session_state.zvolena_zkratka = None
+                st.session_state.historie_navigace = []
+                st.rerun()
             
         row = df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka].iloc[0]
         current_id = row['ID']
 
         st.header(f"{row['Ukazatel']} ({row['Zkratka']})")
-        st.caption(f"Kategorie v DB: {row['Kategorie']} | ID kód v databázi: {int(current_id) if pd.notnull(current_id) else 'N/A'}")
+        st.caption(f"Kategorie v DB: {row['Kategorie']} | ID: {int(current_id) if pd.notnull(current_id) else 'N/A'}")
         st.markdown("---")
 
         st.subheader("🧮 Vzorec / Konstrukce")
         st.info(f"**{row['Vzorec']}**")
 
+        # Úprava velikosti nadpisů (####) a zvětšení textu pomocí CSS třídy hlavni-popis-text
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("### 💡 Co představuje?")
-            st.write(row["Hlavni_Charakteristika"])
+            st.markdown("#### 💡 Co představuje?")
+            st.markdown(f"<div class='hlavni-popis-text'>{row['Hlavni_Charakteristika']}</div>", unsafe_allowed_html=True)
         with col2:
-            st.markdown("### 🔍 Jak ho číst a interpretovat?")
-            st.write(row["Jak_Interpretovat"])
+            st.markdown("#### 🔍 Jak ho číst a interpretovat?")
+            st.markdown(f"<div class='hlavni-popis-text'>{row['Jak_Interpretovat']}</div>", unsafe_allowed_html=True)
 
         st.markdown("---")
 
@@ -132,18 +171,21 @@ if df_data is not None and df_kat is not None:
 
         st.markdown("---")
 
+        # PŘEDĚLANÉ VAZBY: Čisté textové odkazy s podtržením
         st.subheader("🔗 Vazby na jiné ukazatele a kontext")
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
             try:
                 id_list = [int(x.strip()) for x in vazby_raw.split(",") if x.strip().isdigit()]
                 if id_list:
+                    st.write("Tento ukazatel přímo ovlivňuje nebo souvisí s:")
                     for target_id in id_list:
                         target_row = df_data[df_data['ID'] == target_id]
                         if not target_row.empty:
                             target_data = target_row.iloc[0]
-                            if st.button(f"➡️ {target_data['Zkratka']} – {target_data['Ukazatel']}", key=f"link_{target_id}"):
-                                st.session_state.zvolena_zkratka = target_data['Zkratka']
+                            # Použití st.button upraveného jako nenápadný link pomocí klíče
+                            if st.button(f"🔗 {target_data['Zkratka']} – {target_data['Ukazatel']}", key=f"vazba_{target_id}"):
+                                prejit_na_ukazatel(target_data['Zkratka'])
                                 st.rerun()
                 else: st.warning(vazby_raw)
             except: st.warning(vazby_raw)
@@ -151,15 +193,10 @@ if df_data is not None and df_kat is not None:
 
     # SCÉNÁŘ 2: HLAVNÍ ROZCESTNÍK (MŘÍŽKA 6 PANELŮ)
     else:
-        st.title("🗂️ Rozcestník investičních ukazatelů")
-        st.write("Klikněte na jakoukoli kategorii pro zobrazení podrobností, nebo rovnou klikněte na nejdůležitější zkratky.")
-        st.write("")
-
-        # Definice mřížky 3 sloupce × 2 řádky
+        # Odstraněn velký titulek, začínáme rovnou mřížkou
         row1_col1, row1_col2, row1_col3 = st.columns(3)
         row2_col1, row2_col2, row2_col3 = st.columns(3)
 
-        # CHYTRÉ MAPOVÁNÍ: Které kategorie z tabulky (list Data) patří pod jaký panel rozcestníku
         mrizka_sjednocena = [
             {"panel": row1_col1, "panel_id": "Výsledovka", "db_kategorie": ["Výsledovka"]},
             {"panel": row1_col2, "panel_id": "Rozvaha", "db_kategorie": ["Rozvaha"]},
@@ -174,37 +211,31 @@ if df_data is not None and df_kat is not None:
                 with st.container(border=True):
                     st.markdown(f"### 📂 {radek['panel_id']}")
                     
-                    # Načtení textu popisu podle panel_id z listu 'Kategorie'
                     kat_info = df_kat[df_kat["Nazev_Kategorie"] == radek["panel_id"]]
                     if not kat_info.empty:
                         st.write(kat_info["Uvodni_Text"].iloc[0][:130] + "...")
                     
                     st.markdown("**Hlavní ukazatele:**")
                     
-                    # Detekce sloupce Hlavni_Ukazatel
                     sloupec_hlavni = [c for c in df_data.columns if c.lower().replace(" ", "") == "hlavni_ukazatel"]
-                    
                     hlavni_ukazatele = pd.DataFrame()
                     if sloupec_hlavni:
                         real_col = sloupec_hlavni[0]
-                        # NOVINKA: Filtrujeme podle seznamu povolených db_kategorií pro daný panel
                         hlavni_ukazatele = df_data[
                             (df_data["Kategorie"].isin(radek["db_kategorie"])) & 
                             (df_data[real_col].astype(str).str.strip().str.upper() == "ANO")
                         ]
                     
-                    # Výpis tlačítek hlavních ukazatelů
                     if not hlavni_ukazatele.empty and len(hlavni_ukazatele) > 0:
                         cols_buttons = st.columns(len(hlavni_ukazatele))
                         for idx, (_, u_row) in enumerate(hlavni_ukazatele.iterrows()):
                             with cols_buttons[idx]:
                                 if st.button(u_row["Zkratka"], key=f"grid_btn_{radek['panel_id']}_{u_row['Zkratka']}", help=u_row["Ukazatel"]):
-                                    st.session_state.zvolena_zkratka = u_row["Zkratka"]
+                                    prejit_na_ukazatel(u_row["Zkratka"])
                                     st.rerun()
                     else:
                         st.caption("Žádné zkratky nebyly označeny jako hlavní.")
                     
-                    # Expander pro celou kategorii (sloučenou)
                     with st.expander("Zobrazit celou kategorii", expanded=False):
                         if not kat_info.empty:
                             st.write(kat_info["Uvodni_Text"].iloc[0])
@@ -212,12 +243,11 @@ if df_data is not None and df_kat is not None:
                                 st.markdown(f"**Co zde najdete:** {kat_info['Co_Zde_Najdete'].iloc[0]}")
                         
                         st.markdown("**Všechny položky této kategorie:**")
-                        # NOVINKA: Načteme všechny položky ze všech provázaných db_kategorií
                         vsechny_kat_polozky = df_data[df_data["Kategorie"].isin(radek["db_kategorie"])].sort_values(by="Zkratka")
                         
                         for _, p_row in vsechny_kat_polozky.iterrows():
                             if st.button(f"🔍 {p_row['Zkratka']} - {p_row['Ukazatel']}", key=f"exp_list_{radek['panel_id']}_{p_row['Zkratka']}"):
-                                st.session_state.zvolena_zkratka = p_row["Zkratka"]
+                                prejit_na_ukazatel(p_row["Zkratka"])
                                 st.rerun()
 
 else:
