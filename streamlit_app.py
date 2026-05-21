@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
 
+# Nastavení stránky (široké rozložení)
 st.set_page_config(page_title="Průvodce Akciovými Ukazateli", layout="wide", page_icon="📊")
 
+# Základní URL vaší Google Tabulky
 base_url = "https://docs.google.com/spreadsheets/d/12KhfbhPQtJnlj_987Lo8CT7dUJ0GYSexu7tOunaGLdw"
 url_data = f"{base_url}/gviz/tq?tqx=out:csv&sheet=Data"
 url_kategorie = f"{base_url}/gviz/tq?tqx=out:csv&sheet=Kategorie"
@@ -31,17 +33,20 @@ def load_all_data(url_d, url_k):
 
 df_data, df_kat = load_all_data(url_data, url_kategorie)
 
+# Inicializace stavů v Session State
 if "zvolena_zkratka" not in st.session_state:
     st.session_state.zvolena_zkratka = None
 if "historie_navigace" not in st.session_state:
     st.session_state.historie_navigace = []
 
+# Pomocná funkce pro bezpečnou změnu ukazatele z plochy (mřížka, vazby, tlačítka)
 def prejit_na_ukazatel(nova_zkratka):
     if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
         if st.session_state.zvolena_zkratka not in st.session_state.historie_navigace:
             st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
     st.session_state.zvolena_zkratka = nova_zkratka
 
+# Funkce spuštěná při ruční změně v levém rozbalovacím menu
 def callback_sidebar_ukazatel():
     vyber = st.session_state.selectbox_ukazatel_sidebar
     if vyber == "-- Vyberte --":
@@ -68,6 +73,7 @@ if df_data is not None and df_kat is not None:
     filtr_sidebar_df = filtr_sidebar_df.sort_values(by="Zkratka")
     ukazatel_list = ["-- Vyberte --"] + list(filtr_sidebar_df["Zkratka"].dropna().unique())
     
+    # Určení indexu pro lištu tak, aby sledovala dění na hlavní ploše
     index_select = 0
     if st.session_state.zvolena_zkratka in ukazatel_list:
         index_select = ukazatel_list.index(st.session_state.zvolena_zkratka)
@@ -81,8 +87,11 @@ if df_data is not None and df_kat is not None:
     )
 
     # --- HLAVNÍ PLOCHA APLIKACE ---
+    
+    # SCÉNÁŘ 1: DETAIL UKAZATELE
     if st.session_state.zvolena_zkratka is not None:
         
+        # Ovládací tlačítka zpětného chodu nahoře
         nav_col1, nav_col2, _ = st.columns([1, 2, 7])
         with nav_col1:
             if st.button("⬅️ Zpět", disabled=len(st.session_state.historie_navigace) == 0):
@@ -145,19 +154,29 @@ if df_data is not None and df_kat is not None:
 
         st.markdown("---")
 
-        # TOHLE MÍSTO JE TEĎ ODOLNĚJŠÍ PROTI MEZERÁM V TABULCE
+        # --- CHYTRÉ A AUTOMATICKÉ VAZBY (ČÍSLA I TEXT) ---
         st.markdown("### 🔗 Vazby na jiné ukazatele a kontext")
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
+        
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
-            # Vyčistíme text od mezer a rozdělíme podle čárek
-            cista_id = [x.strip() for x in vazby_raw.split(",") if x.strip()]
+            id_list = []
             
-            # Zkontrolujeme, zda jsou všechny prvky opravdu jen čísla
-            if all(x.isdigit() for x in cista_id):
+            # Krok A: Zkusíme, zda v buňce nejsou rovnou čistá ID čísla oddělená čárkou
+            cista_id = [x.strip() for x in vazby_raw.split(",") if x.strip().isdigit()]
+            if cista_id:
                 id_list = [int(x) for x in cista_id]
+            else:
+                # Krok B: Pokud jsou v buňce slova, prohledáme databázi a vytáhneme odpovídající ID podle nalezených zkratek
+                for _, db_row in df_data.iterrows():
+                    zkratka_v_db = str(db_row["Zkratka"]).strip()
+                    # Kontrola, zda text obsahuje danou zkratku (např. zda text obsahuje "PEG" nebo "P/E")
+                    if zkratka_v_db.lower() in vazby_raw.lower():
+                        if db_row["ID"] not in id_list and db_row["ID"] != current_id:
+                            id_list.append(int(db_row["ID"]))
+            
+            # Pokud se podařilo najít jakákoliv ID (přes čísla nebo přes textová slova)
+            if id_list:
                 st.write("Tento ukazatel přímo ovlivňuje nebo souvisí s (kliknutím přejdete na detail):")
-                
-                # Pro jistotu vytvoříme řádek tlačítek vedle sebe
                 cols_vazby = st.columns(len(id_list) if len(id_list) <= 4 else 4)
                 for idx, target_id in enumerate(id_list):
                     target_row = df_data[df_data['ID'] == target_id]
@@ -169,12 +188,12 @@ if df_data is not None and df_kat is not None:
                                 prejit_na_ukazatel(target_data['Zkratka'])
                                 st.rerun()
             else:
-                # Pokud buňka obsahuje normální text (slova), jen ho vypíšeme
+                # Pokud v textu nebyla nalezena žádná známá zkratka, text pouze bezpečně zobrazíme
                 st.info(vazby_raw)
         else:
             st.info("Pro tento ukazatel zatím nebyly definovány specifické vazby.")
 
-    # SCÉNÁŘ 2: MŘÍŽKA
+    # SCÉNÁŘ 2: HLAVNÍ ROZCESTNÍK (MŘÍŽKA 6 PANELŮ)
     else:
         row1_col1, row1_col2, row1_col3 = st.columns(3)
         row2_col1, row2_col2, row2_col3 = st.columns(3)
@@ -232,4 +251,4 @@ if df_data is not None and df_kat is not None:
                                 prejit_na_ukazatel(p_row["Zkratka"])
                                 st.rerun()
 else:
-    st.info("Zkontrolujte, zda listy 'Data' a 'Kategorie' fungují.")
+    st.info("Zkontrolujte nastavení listů ve vaší Google Tabulce.")
