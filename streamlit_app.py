@@ -90,7 +90,7 @@ if df_data is not None and df_kat is not None:
     # SCÉNÁŘ 1: DETAIL UKAZATELE
     if st.session_state.zvolena_zkratka is not None:
         
-        # KOMPAKTNÍ LIŠTA: Tlačítka těsně vedle sebe pro úsporu místa nahoře
+        # KOMPAKTNÍ LIŠTA: Tlačítka těsně vedle sebe
         nav_col1, nav_col2, _ = st.columns([1.2, 2.2, 8.6])
         with nav_col1:
             if st.button("⬅️ Zpět", disabled=len(st.session_state.historie_navigace) == 0):
@@ -128,40 +128,30 @@ if df_data is not None and df_kat is not None:
         with col4:
             st.error(f"**📉 Kritické / Rizikové hodnoty:**\n\n{row['Kriticke_Hodnoty']}")
 
-        # Sekce 4: VYPRÁSKANÁ TLAČÍTKA BLÍZKO SEBE (Změna zde)
+        # Sekce 4: NEPRŮSTŘELNÁ DIAL_UP NAVIGACE PODLE ČISTÝCH ID
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
+            # Rozsekáme buňku podle čárek a vytáhneme pouze platná čísla ID
             id_list = []
-            cista_id = [x.strip() for x in vazby_raw.split(",") if x.strip().isdigit()]
-            if cista_id:
-                id_list = [int(x) for x in cista_id]
-            else:
-                for _, db_row in df_data.iterrows():
-                    zkratka_v_db = str(db_row["Zkratka"]).strip()
-                    if zkratka_v_db.lower() in vazby_raw.lower():
-                        if db_row["ID"] not in id_list and db_row["ID"] != current_id:
-                            id_list.append(int(db_row["ID"]))
+            for x in vazby_raw.split(","):
+                x_clean = x.strip()
+                if x_clean.isdigit():
+                    target_id = int(x_clean)
+                    if target_id != int(current_id) and target_id not in id_list:
+                        id_list.append(target_id)
             
             if id_list:
                 st.markdown("**🔗 Související ukazatele:**")
-                
-                # Tento HTML kód donutí Streamlit elementy uvnitř kontejneru držet se těsně vedle sebe
                 st.html(
                     """
                     <style>
-                        div[data-testid="stHorizontalBlock"] {
-                            gap: 10px !important;
-                        }
+                        div[data-testid="stHorizontalBlock"] { gap: 10px !important; }
                         div[data-testid="element-container"]:has(div.stButton) {
-                            display: inline-block !important;
-                            width: auto !important;
-                            flex: none !important;
+                            display: inline-block !important; width: auto !important; flex: none !important;
                         }
                     </style>
                     """
                 )
-                
-                # Vytvoříme dynamické sloupce, ale s fixní malou šířkou pro každý prvek
                 cols_vazby = st.columns([1] * len(id_list) + [12 - len(id_list) if len(id_list) < 12 else 1])
                 
                 for idx, target_id in enumerate(id_list):
@@ -196,7 +186,7 @@ if df_data is not None and df_kat is not None:
             else:
                 st.write(f"Pro ukazatel **{row['Zkratka']}** se kalkulačka připravuje podle vzorce: `{row['Vzorec']}`.")
 
-    # SCÉNÁŘ 2: HLAVNÍ ROZCESTNÍK (MŘÍŽKA 6 PANELŮ)
+    # SCÉNÁŘ 2: HLAVNÍ ROZCESTNÍK
     else:
         row1_col1, row1_col2, row1_col3 = st.columns(3)
         row2_col1, row2_col2, row2_col3 = st.columns(3)
