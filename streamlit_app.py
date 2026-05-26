@@ -46,17 +46,6 @@ def prejit_na_ukazatel(nova_zkratka):
             st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
     st.session_state.zvolena_zkratka = nova_zkratka
 
-# Funkce pro změnu v levém rozbalovacím menu
-def callback_sidebar_ukazatel():
-    vyber = st.session_state.selectbox_ukazatel_sidebar
-    if vyber == "-- Vyberte --":
-        st.session_state.zvolena_zkratka = None
-        st.session_state.historie_navigace = []
-    else:
-        if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != vyber:
-            st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
-        st.session_state.zvolena_zkratka = vyber
-
 if df_data is not None and df_kat is not None:
     
     # --- SIDEBAR NAVIGACE ---
@@ -77,13 +66,22 @@ if df_data is not None and df_kat is not None:
     if st.session_state.zvolena_zkratka in ukazatel_list:
         index_select = ukazatel_list.index(st.session_state.zvolena_zkratka)
         
-    st.sidebar.selectbox(
+    vyber_sidebar = st.sidebar.selectbox(
         "Přejít na ukazatel:", 
         ukazatel_list, 
         index=index_select, 
-        key="selectbox_ukazatel_sidebar",
-        on_change=callback_sidebar_ukazatel
+        key="selectbox_ukazatel_sidebar"
     )
+
+    # Detekce ruční změny v sidebaru bez callbacku
+    if vyber_sidebar == "-- Vyberte --":
+        if st.session_state.zvolena_zkratka is not None:
+            st.session_state.zvolena_zkratka = None
+            st.session_state.historie_navigace = []
+            st.rerun()
+    elif vyber_sidebar != st.session_state.zvolena_zkratka:
+        prejit_na_ukazatel(vyber_sidebar)
+        st.rerun()
 
     # --- HLAVNÍ PLOCHA APLIKACE ---
     
@@ -131,7 +129,6 @@ if df_data is not None and df_kat is not None:
         # Sekce 4: NEPRŮSTŘELNÁ DIAL_UP NAVIGACE PODLE ČISTÝCH ID
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
-            # Rozsekáme buňku podle čárek a vytáhneme pouze platná čísla ID
             id_list = []
             for x in vazby_raw.split(","):
                 x_clean = x.strip()
