@@ -39,7 +39,7 @@ if "zvolena_zkratka" not in st.session_state:
 if "historie_navigace" not in st.session_state:
     st.session_state.historie_navigace = []
 
-# Pomocná funkce pro bezpečnou změnu ukazatele z plochy
+# Pomocná funkce pro bezpečnou změnu ukazatele odkudkoliv
 def prejit_na_ukazatel(nova_zkratka):
     if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
         if st.session_state.zvolena_zkratka not in st.session_state.historie_navigace:
@@ -62,6 +62,7 @@ if df_data is not None and df_kat is not None:
     filtr_sidebar_df = filtr_sidebar_df.sort_values(by="Zkratka")
     ukazatel_list = ["-- Vyberte --"] + list(filtr_sidebar_df["Zkratka"].dropna().unique())
     
+    # Výpočet aktuálního indexu pro synchronizaci sidebaru s plochou
     index_select = 0
     if st.session_state.zvolena_zkratka in ukazatel_list:
         index_select = ukazatel_list.index(st.session_state.zvolena_zkratka)
@@ -73,13 +74,13 @@ if df_data is not None and df_kat is not None:
         key="selectbox_ukazatel_sidebar"
     )
 
-    # Detekce ruční změny v sidebaru bez callbacku
-    if vyber_sidebar == "-- Vyberte --":
-        if st.session_state.zvolena_zkratka is not None:
-            st.session_state.zvolena_zkratka = None
-            st.session_state.historie_navigace = []
-            st.rerun()
-    elif vyber_sidebar != st.session_state.zvolena_zkratka:
+    # Reakce na změnu VÝHRADNĚ ze sidebaru (pokud uživatel klikne v menu)
+    if vyber_sidebar == "-- Vyberte --" and st.session_state.zvolena_zkratka is not None:
+        st.session_state.zvolena_zkratka = None
+        st.session_state.historie_navigace = []
+        st.rerun()
+    elif vyber_sidebar != "-- Vyberte --" and vyber_sidebar != st.session_state.zvolena_zkratka:
+        # Změna přišla ze sidebaru, tak ji aplikujeme
         prejit_na_ukazatel(vyber_sidebar)
         st.rerun()
 
@@ -126,7 +127,7 @@ if df_data is not None and df_kat is not None:
         with col4:
             st.error(f"**📉 Kritické / Rizikové hodnoty:**\n\n{row['Kriticke_Hodnoty']}")
 
-        # Sekce 4: NEPRŮSTŘELNÁ DIAL_UP NAVIGACE PODLE ČISTÝCH ID
+        # Sekce 4: DIAL_UP NAVIGACE PODLE ČISTÝCH ID (Funkční a proklikávací)
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
             id_list = []
@@ -162,7 +163,7 @@ if df_data is not None and df_kat is not None:
             else:
                 st.text(f"🔗 Kontext: {vazby_raw}")
 
-        # Sekce 5: Interaktivní kalkulačka (dole)
+        # Sekce 5: Interaktivní kalkulačka
         st.markdown("---")
         with st.expander(f"🧮 Spustit pomocnou kalkulačku pro {row['Zkratka']}", expanded=False):
             if row['Zkratka'] == 'P/E':
