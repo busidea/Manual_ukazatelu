@@ -33,18 +33,34 @@ def load_all_data(url_d, url_k):
 
 df_data, df_kat = load_all_data(url_data, url_kategorie)
 
-# Inicializace stavů v Session State
+# --- INICIALIZACE STAVŮ (SESSION STATE) ---
 if "zvolena_zkratka" not in st.session_state:
     st.session_state.zvolena_zkratka = None
 if "historie_navigace" not in st.session_state:
     st.session_state.historie_navigace = []
+if "sidebar_widget_key" not in st.session_state:
+    st.session_state.sidebar_widget_key = 0
 
-# Pomocná funkce pro bezpečnou změnu ukazatele odkudkoliv
+# --- POMOCNÉ FUNKCE PRO NAVIGACI ---
 def prejit_na_ukazatel(nova_zkratka):
+    """Volá se při kliknutí na JAKÉKOLIV TLAČÍTKO na hlavní ploše."""
     if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != nova_zkratka:
         if st.session_state.zvolena_zkratka not in st.session_state.historie_navigace:
             st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
     st.session_state.zvolena_zkratka = nova_zkratka
+    # Zvýšením klíče přonutíme sidebar, aby zapomněl svou starou vybranou hodnotu a synchronizoval se
+    st.session_state.sidebar_widget_key += 1
+
+def zmena_ze_sidebaru():
+    """Volá se VÝHRADNĚ při interakci s rozbalovacím menu v sidebaru."""
+    vyber = st.session_state[f"sb_select_{st.session_state.sidebar_widget_key}"]
+    if vyber == "-- Vyberte --":
+        st.session_state.zvolena_zkratka = None
+        st.session_state.historie_navigace = []
+    else:
+        if st.session_state.zvolena_zkratka and st.session_state.zvolena_zkratka != vyber:
+            st.session_state.historie_navigace.append(st.session_state.zvolena_zkratka)
+        st.session_state.zvolena_zkratka = vyber
 
 if df_data is not None and df_kat is not None:
     
@@ -62,27 +78,19 @@ if df_data is not None and df_kat is not None:
     filtr_sidebar_df = filtr_sidebar_df.sort_values(by="Zkratka")
     ukazatel_list = ["-- Vyberte --"] + list(filtr_sidebar_df["Zkratka"].dropna().unique())
     
-    # Výpočet aktuálního indexu pro synchronizaci sidebaru s plochou
+    # Výpočet indexu na základě vnitřního stavu aplikace
     index_select = 0
     if st.session_state.zvolena_zkratka in ukazatel_list:
         index_select = ukazatel_list.index(st.session_state.zvolena_zkratka)
         
-    vyber_sidebar = st.sidebar.selectbox(
+    # Dynamický klíč (selectbox_ukazatel_sidebar) zajišťuje, že plocha dokáže přepsat stav sidebaru
+    st.sidebar.selectbox(
         "Přejít na ukazatel:", 
         ukazatel_list, 
         index=index_select, 
-        key="selectbox_ukazatel_sidebar"
+        key=f"sb_select_{st.session_state.sidebar_widget_key}",
+        on_change=zmena_ze_sidebaru
     )
-
-    # Reakce na změnu VÝHRADNĚ ze sidebaru (pokud uživatel klikne v menu)
-    if vyber_sidebar == "-- Vyberte --" and st.session_state.zvolena_zkratka is not None:
-        st.session_state.zvolena_zkratka = None
-        st.session_state.historie_navigace = []
-        st.rerun()
-    elif vyber_sidebar != "-- Vyberte --" and vyber_sidebar != st.session_state.zvolena_zkratka:
-        # Změna přišla ze sidebaru, tak ji aplikujeme
-        prejit_na_ukazatel(vyber_sidebar)
-        st.rerun()
 
     # --- HLAVNÍ PLOCHA APLIKACE ---
     
@@ -94,11 +102,13 @@ if df_data is not None and df_kat is not None:
         with nav_col1:
             if st.button("⬅️ Zpět", disabled=len(st.session_state.historie_navigace) == 0):
                 st.session_state.zvolena_zkratka = st.session_state.historie_navigace.pop()
+                st.session_state.sidebar_widget_key += 1
                 st.rerun()
         with nav_col2:
             if st.button("🏠 Hlavní přehled"):
                 st.session_state.zvolena_zkratka = None
                 st.session_state.historie_navigace = []
+                st.session_state.sidebar_widget_key += 1
                 st.rerun()
             
         row = df_data[df_data["Zkratka"] == st.session_state.zvolena_zkratka].iloc[0]
@@ -127,7 +137,7 @@ if df_data is not None and df_kat is not None:
         with col4:
             st.error(f"**📉 Kritické / Rizikové hodnoty:**\n\n{row['Kriticke_Hodnoty']}")
 
-        # Sekce 4: DIAL_UP NAVIGACE PODLE ČISTÝCH ID (Funkční a proklikávací)
+        # Sekce 4: DIAL_UP NAVIGACE PODLE ČISTÝCH ID
         vazby_raw = str(row["Vazby_Na_Jine_Ukazatele"]).strip()
         if vazby_raw and vazby_raw != "nan" and vazby_raw != "":
             id_list = []
